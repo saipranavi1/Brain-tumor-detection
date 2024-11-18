@@ -1,0 +1,143 @@
+PYTHON CODE FOR APPLICATION
+
+import os import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname( file ), "model"))) import streamlit as st
+from pages import home from pages import about
+
+from pages import try_it
+
+
+routes = { "Home": home.Main,
+"Try it out": try_it.main, "About": about.main,
+
+}
+
+# St. Markdown (
+#	"<head> <meta http-equiv=\"Content-Security-Policy\" \"> </head>", # unsafe_allow_html=True,
+# )
+
+
+st.set_page_config( page_title="Brain Tumor Detection", page_icon=":brain:",
+layout="wide", menu_items={
+"Get Help": "https://github.com/Oct4Pie/brain-tumor-detection",
+"Report a bug": "https://github.com/Oct4Pie/brain-tumor-detection/issues", "About": "Detecting brain tumors using deep Convolutional Neural Networks. Written by Santhosh",
+},
+)
+st.markdown( """
+<script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js" />
+<script src="https://raw.githubusercontent.com/darcyclarke/Repo.js/master/repo.min.js"
+/>""",
+unsafe_allow_html=True,
+)
+
+
+pages = list(routes.items()) # current_page = pages[0] def format_func(page):
+#	print(page)
+#	current_page = pages[list(routes.keys()).index(page[0])]
+ 
+
+# return current_page[0] return page[0]
+page = st.sidebar.selectbox( "Menu",
+pages, index=0,
+format_func=format_func,
+# on_change=current_page[1]
+)
+
+page[1]()
+
+
+
+
+
+PYTHON CODE FOR HOME PAGE
+
+
+import streamlit as st import os
+import numpy as np import cv2
+from PIL import Image
+import streamlit.components.v1 as html_components from .utils import set_css
+from .components import title from predictor import get_model from mask import crop_img
+
+# @st.cache
+def load_model():
+model, acc, loss = get_model(6) return model, acc, loss
+
+def main():
+set_css("pages/css/streamlit.css") html_components.html(title())
+st.write("These are pre-cropped MRI scan samples. They were used to valdiate the model.\n") samples = os.listdir("pages/samples")
+option = st.selectbox("Select an image for analysis", (range(1, len(samples) + 1))) collection = []
+for i in range(0, len(samples), 3): collection.append(st.columns(3))
+
+if i < len(samples) - 3: collection.append(st.columns(len(samples) - i))
+ 
+index = 0
+for column_list in collection:
+for i in range(len(column_list)): column_list[i].image(Image.open(f"pages/samples/{samples[index]}")) column_list[i].subheader(index + 1)
+index += 1
+
+if st.button("Analyze"):
+with st.spinner(text="Analyzing..."):
+model, acc, loss = load_model()
+image = cv2.imread(f"pages/samples/{samples[option-1]}") gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)[-1]
+img = np.array([cv2.resize(image, (32, 32))]) prediction = model.predict(img)
+
+st.write( """
+#### Mask Threshold """
+)
+st.image(thresh, caption=option) st.write(
+"""
+#### Prediction
+"""
+)
+st.image(image, caption=option) if prediction[0][0] == 1:
+st.write(f"Sample {option} has a tumor")
+
+if prediction[0][0] == 0:
+st.write(f"Sample {option} has no tumor") st.write(f"Accuracy: {acc*100:.2f}%")
+ 
+PYTHON CODE FOR MODEL
+
+
+import numpy as np import pandas as pd import tensorflow as tf import os
+import cv2 import imghdr import random import json
+from tensorflow import keras
+from tensorflow.keras import layers
+
+
+def get_samples():
+# data_dir = os.path.join(os.getcwd(), "brain_tumor_dataset") data_dir = os.path.join(os.getcwd(), 'model', "cropped")
+paths = []
+img_formats = ["jpeg", "png", "jpg"]
+
+for directory in os.listdir(data_dir):
+for file in os.listdir(os.path.join(data_dir, directory)): file_path = os.path.join(data_dir, directory, file)
+if imghdr.what(file_path):
+if imghdr.what(file_path).lower() in img_formats: paths.append(file_path)
+else:
+print(file_path, "not recognized") random.shuffle(paths)
+return paths
+
+
+def get_test_samples(size):
+data_dir = os.path.join(os.getcwd(), "tests") paths = []
+sample_imgs = []
+img_formats = ["jpeg", "png", "jpg"]
+
+for directory in os.listdir(data_dir):
+for file in os.listdir(os.path.join(data_dir, directory)): file_path = os.path.join(data_dir, directory, file)
+if imghdr.what(file_path):
+if imghdr.what(file_path).lower() in img_formats: paths.append(file_path)
+else:
+print(file_path, "not recognized") random.shuffle(paths)
+ 
+for image_path in paths:
+image = cv2.imread(image_path) image = cv2.resize(image, (size, size)) sample_imgs.append(image)
+
+return np.array(sample_imgs)
+
+
+def get_test_sample(img_name): img_formats = ["jpeg", "png", "jpg"] img = []
+
+for file in os.listdir("tests"): if img_name == file:
+file_path = os.path.join("tests", file)
